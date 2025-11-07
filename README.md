@@ -45,6 +45,6 @@ The idea is to make computer-based exams accessible, fast, and manageable — ev
 
 ## 🧑‍💻 Author
 
-**Developed by:** Gian Carlo Sanchez
-**Project Status:** 🏗️ *Planning & Early Development Stage*
-**Goal:** To build a local, easy-to-use exam system for training and assessments.
+* **Developed by:** Gian Carlo Sanchez
+* **Project Status:** 🏗️ *Planning & Early Development Stage*
+* **Goal:** To build a local, easy-to-use exam system for training and assessments.
