@@ -48,8 +48,3 @@ The idea is to make computer-based exams accessible, fast, and manageable — ev
 **Developed by:** Gian Carlo Sanchez
 **Project Status:** 🏗️ *Planning & Early Development Stage*
 **Goal:** To build a local, easy-to-use exam system for training and assessments.
-
----
-
-Would you like me to add **mock screenshots / system flow diagram section** (as placeholders for when you upload them later)?
-That makes the README look more complete even if it’s still in planning.
