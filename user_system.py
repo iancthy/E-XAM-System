@@ -4,7 +4,7 @@ import mysql.connector
 from datetime import datetime
 
 # ============================================================
-# DATABASE CLASS (Same logic, just cleaner)
+# DATABASE CLASS
 # ============================================================
 class Database:
     def __init__(self):
@@ -16,14 +16,18 @@ class Database:
         self.cursor = None
 
     def __enter__(self):
-        self.conn = mysql.connector.connect(
-            host=self.host,
-            user=self.user,
-            password=self.password,
-            database=self.database
-        )
-        self.cursor = self.conn.cursor()
-        return self
+        try:
+            self.conn = mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.database
+            )
+            self.cursor = self.conn.cursor()
+            return self
+        except mysql.connector.Error as e:
+            messagebox.showerror("Database Error", f"Cannot connect to database:\n{e}")
+            return None
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.conn:
@@ -39,8 +43,10 @@ class QuizUserApp:
         self.root = root
         self.root.title("Quiz System - User Panel")
         self.root.geometry("500x420")
+        self.root.configure(bg="#f0f0f0")
 
         self.user_name = ""
+        self.user_pin = ""
 
         self.build_login_screen()
 
@@ -49,64 +55,95 @@ class QuizUserApp:
     # --------------------------------------------------------
     def build_login_screen(self):
         self.clear_screen()
-
         tk.Label(self.root, text="Welcome to the Quiz System",
-                 font=("Arial", 16)).pack(pady=20)
+                 font=("Arial", 16), bg="#f0f0f0").pack(pady=20)
 
-        tk.Label(self.root, text="Enter your name:").pack()
+        tk.Label(self.root, text="Enter your username:", bg="#f0f0f0").pack()
         self.user_entry = tk.Entry(self.root, width=30)
-        self.user_entry.pack(pady=10)
+        self.user_entry.pack(pady=5)
 
-        tk.Button(self.root, text="Continue",
+        tk.Label(self.root, text="Enter your PIN:", bg="#f0f0f0").pack()
+        self.pin_entry = tk.Entry(self.root, show="*", width=30)
+        self.pin_entry.pack(pady=5)
+
+        tk.Button(self.root, text="Login / Register", width=20,
                   command=self.start_user_panel).pack(pady=15)
+
+    # --------------------------------------------------------
+    # LOGIN & REGISTER LOGIC
+    # --------------------------------------------------------
+    def start_user_panel(self):
+        username = self.user_entry.get().strip()
+        pin = self.pin_entry.get().strip()
+
+        if not username or not pin:
+            messagebox.showwarning("Error", "Please enter both username and PIN!")
+            return
+
+        with Database() as db:
+            if not db:
+                return
+
+            # Check if user exists
+            db.cursor.execute("SELECT pin FROM users WHERE user_name=%s", (username,))
+            record = db.cursor.fetchone()
+
+            if record:
+                if record[0] != pin:
+                    messagebox.showerror("Login Failed", "Incorrect PIN!")
+                    return
+            else:
+                # Register new user
+                try:
+                    db.cursor.execute("INSERT INTO users (user_name, pin) VALUES (%s, %s)", (username, pin))
+                    messagebox.showinfo("New User", f"User '{username}' created successfully!")
+                except mysql.connector.Error as e:
+                    messagebox.showerror("Database Error", f"Failed to create user:\n{e}")
+                    return
+
+        self.user_name = username
+        self.user_pin = pin
+        self.build_user_menu()
 
     # --------------------------------------------------------
     # MAIN USER MENU
     # --------------------------------------------------------
-    def start_user_panel(self):
-        name = self.user_entry.get().strip()
-        if not name:
-            messagebox.showwarning("Error", "Please enter your name!")
-            return
-
-        self.user_name = name
-        self.build_user_menu()
-
     def build_user_menu(self):
         self.clear_screen()
-    
         tk.Label(self.root, text=f"Hello, {self.user_name}!",
-                 font=("Arial", 16)).pack(pady=20)
-    
+                 font=("Arial", 16), bg="#f0f0f0").pack(pady=20)
+
         tk.Button(self.root, text="View Available Quizzes",
-                  width=30, command=self.view_active_sets).pack(pady=10)
-    
+                  width=30, command=self.view_all_sets).pack(pady=10)
+
         tk.Button(self.root, text="Take a Quiz",
                   width=30, command=self.take_quiz_select).pack(pady=10)
-    
+
         tk.Button(self.root, text="View My Results",
                   width=30, command=self.view_user_results).pack(pady=10)
-    
-        # UPDATED — Logout instead of Exit
+
         tk.Button(self.root, text="Logout",
                   width=30, command=self.build_login_screen).pack(pady=10)
 
     # --------------------------------------------------------
-    # VIEW ACTIVE QUIZZES (GUI)
+    # VIEW ALL QUIZZES
     # --------------------------------------------------------
-    def view_active_sets(self):
+    def view_all_sets(self):
         with Database() as db:
-            db.cursor.execute("SELECT set_id, set_name FROM sets WHERE is_active = TRUE")
+            if not db:
+                return
+            db.cursor.execute("SELECT set_id, set_name FROM sets")
             sets = db.cursor.fetchall()
 
         win = tk.Toplevel(self.root)
-        win.title("Active Quizzes")
+        win.title("Available Quizzes")
         win.geometry("400x300")
+        win.configure(bg="#f0f0f0")
 
-        tk.Label(win, text="Available Quizzes", font=("Arial", 14)).pack(pady=10)
+        tk.Label(win, text="Available Quizzes", font=("Arial", 14), bg="#f0f0f0").pack(pady=10)
 
         if not sets:
-            tk.Label(win, text="No active quizzes found.").pack()
+            tk.Label(win, text="No quizzes found.", bg="#f0f0f0").pack()
             return
 
         tree = ttk.Treeview(win, columns=("ID", "Name"), show="headings")
@@ -118,34 +155,37 @@ class QuizUserApp:
             tree.insert("", tk.END, values=(s[0], s[1]))
 
     # --------------------------------------------------------
-    # TAKE QUIZ (Screen to choose quiz)
+    # TAKE QUIZ (Select & Start)
     # --------------------------------------------------------
     def take_quiz_select(self):
         with Database() as db:
-            db.cursor.execute("SELECT set_id, set_name FROM sets WHERE is_active = TRUE")
-            self.active_sets = db.cursor.fetchall()
+            if not db:
+                return
+            db.cursor.execute("SELECT set_id, set_name FROM sets")
+            self.all_sets = db.cursor.fetchall()
 
-        if not self.active_sets:
-            messagebox.showinfo("No Quiz", "No active quizzes available.")
+        if not self.all_sets:
+            messagebox.showinfo("No Quiz", "No quizzes available.")
             return
 
         win = tk.Toplevel(self.root)
         win.title("Select Quiz")
         win.geometry("400x300")
+        win.configure(bg="#f0f0f0")
 
-        tk.Label(win, text="Choose a quiz:", font=("Arial", 14)).pack(pady=15)
+        tk.Label(win, text="Choose a quiz:", font=("Arial", 14), bg="#f0f0f0").pack(pady=15)
 
         self.quiz_var = tk.StringVar()
         quiz_list = ttk.Combobox(win, textvariable=self.quiz_var,
-                                 values=[f"{s[0]} - {s[1]}" for s in self.active_sets],
-                                 state="readonly", width=35)
+                                values=[f"{s[0]} - {s[1]}" for s in self.all_sets],
+                                state="readonly", width=35)
         quiz_list.pack(pady=10)
 
         tk.Button(win, text="Start Quiz",
                   command=lambda: self.start_quiz(win)).pack(pady=20)
 
     # --------------------------------------------------------
-    # TAKE QUIZ (Actual quiz window)
+    # START QUIZ (Fetch questions)
     # --------------------------------------------------------
     def start_quiz(self, parent_win):
         selected = self.quiz_var.get()
@@ -154,10 +194,11 @@ class QuizUserApp:
             return
 
         parent_win.destroy()
-
-        set_id = selected.split(" - ")[0]
+        set_id = int(selected.split(" - ")[0])
 
         with Database() as db:
+            if not db:
+                return
             db.cursor.execute("""
                 SELECT question_id, question_text, answer 
                 FROM questions WHERE set_id=%s
@@ -171,12 +212,13 @@ class QuizUserApp:
         self.current_index = 0
         self.score = 0
         self.current_set_id = set_id
-
         self.quiz_window()
 
+    # --------------------------------------------------------
+    # QUIZ WINDOW
+    # --------------------------------------------------------
     def quiz_window(self):
         self.clear_screen()
-
         if self.current_index >= len(self.questions):
             self.finish_quiz()
             return
@@ -184,17 +226,19 @@ class QuizUserApp:
         q_id, question_text, correct_answer = self.questions[self.current_index]
 
         tk.Label(self.root, text=f"Question {self.current_index + 1}",
-                 font=("Arial", 16)).pack(pady=20)
+                 font=("Arial", 16), bg="#f0f0f0").pack(pady=20)
 
-        tk.Label(self.root, text=question_text,
-                 font=("Arial", 13), wraplength=450).pack(pady=10)
+        tk.Label(self.root, text=question_text, font=("Arial", 13),
+                 wraplength=450, bg="#f0f0f0").pack(pady=10)
 
         self.answer_entry = tk.Entry(self.root, width=40)
         self.answer_entry.pack(pady=10)
 
-        tk.Button(self.root, text="Submit",
-                  command=self.submit_answer).pack(pady=20)
+        tk.Button(self.root, text="Submit", command=self.submit_answer).pack(pady=20)
 
+    # --------------------------------------------------------
+    # SUBMIT ANSWER
+    # --------------------------------------------------------
     def submit_answer(self):
         user_answer = self.answer_entry.get().strip()
         correct_answer = self.questions[self.current_index][2].strip()
@@ -206,12 +250,14 @@ class QuizUserApp:
         self.quiz_window()
 
     # --------------------------------------------------------
-    # QUIZ FINISHED
+    # FINISH QUIZ
     # --------------------------------------------------------
     def finish_quiz(self):
         total = len(self.questions)
 
         with Database() as db:
+            if not db:
+                return
             db.cursor.execute("""
                 INSERT INTO results (user_name, set_id, score, total, date_taken)
                 VALUES (%s, %s, %s, %s, %s)
@@ -219,7 +265,6 @@ class QuizUserApp:
 
         messagebox.showinfo("Quiz Finished",
                             f"Your score: {self.score}/{total}\nResult saved!")
-
         self.build_user_menu()
 
     # --------------------------------------------------------
@@ -227,6 +272,8 @@ class QuizUserApp:
     # --------------------------------------------------------
     def view_user_results(self):
         with Database() as db:
+            if not db:
+                return
             db.cursor.execute("""
                 SELECT s.set_name, r.score, r.total, r.date_taken
                 FROM results r
@@ -238,11 +285,12 @@ class QuizUserApp:
         win = tk.Toplevel(self.root)
         win.title("My Results")
         win.geometry("500x350")
+        win.configure(bg="#f0f0f0")
 
-        tk.Label(win, text="Your Quiz Results", font=("Arial", 14)).pack(pady=10)
+        tk.Label(win, text="Your Quiz Results", font=("Arial", 14), bg="#f0f0f0").pack(pady=10)
 
         if not results:
-            tk.Label(win, text="No results found.").pack()
+            tk.Label(win, text="No results found.", bg="#f0f0f0").pack()
             return
 
         tree = ttk.Treeview(win, columns=("Quiz", "Score", "Total", "Date"), show="headings")
