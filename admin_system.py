@@ -78,6 +78,7 @@ class Database:
 def create_tables():
     try:
         with Database() as db:
+            # Users table
             db.cursor.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     user_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -85,6 +86,17 @@ def create_tables():
                     pin VARCHAR(10) NOT NULL
                 )
             """)
+            
+            # Sets table
+            db.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sets (
+                    set_id INT AUTO_INCREMENT PRIMARY KEY,
+                    set_name VARCHAR(255) UNIQUE NOT NULL,
+                    date_created DATETIME
+                )
+            """)
+            
+            # Questions table
             db.cursor.execute("""
                 CREATE TABLE IF NOT EXISTS questions (
                     question_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -94,6 +106,8 @@ def create_tables():
                     FOREIGN KEY (set_id) REFERENCES sets(set_id) ON DELETE CASCADE
                 )
             """)
+            
+            # Results table
             db.cursor.execute("""
                 CREATE TABLE IF NOT EXISTS results (
                     result_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -105,8 +119,12 @@ def create_tables():
                     FOREIGN KEY (set_id) REFERENCES sets(set_id) ON DELETE CASCADE
                 )
             """)
+            
+            print("Tables created successfully!")
     except mysql.connector.Error as e:
+        print("Table creation error:", e)
         messagebox.showerror("Database Error", f"Could not create tables:\n{e}")
+
 
 # ---------------------------
 # Helper: simple button creation to preserve minimal look
@@ -778,24 +796,25 @@ class ExamAdminApp(tk.Tk):
         self.make_treeview_sortable(tree)
 
         def load_results():
-            for i in tree.get_children():
-                tree.delete(i)
+            tree.delete(*tree.get_children())
             try:
                 with Database() as db:
                     db.cursor.execute("""
-                        ALTER TABLE results 
-                        ADD COLUMN IF NOT EXISTS user_id INT,
-                        ADD FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
+                        SELECT r.result_id, r.user_name, s.set_name, r.score, r.total, r.date_taken
+                        FROM results r
+                        LEFT JOIN sets s ON r.set_id = s.set_id
+                        ORDER BY r.date_taken DESC
                     """)
                     rows = db.cursor.fetchall()
                     for r in rows:
                         date_val = r[5]
-                        if hasattr(date_val, "strftime"):
+                        if isinstance(date_val, datetime):
                             date_val = date_val.strftime("%Y-%m-%d %H:%M:%S")
                         display_set = r[2] or "(deleted set)"
                         tree.insert("", "end", values=(r[0], r[1], display_set, r[3], r[4], date_val))
             except mysql.connector.Error as e:
                 messagebox.showerror("Database Error", str(e))
+
 
         # Refresh button
         refresh_btn = simple_button(frame, "🔁  Refresh Results", command=load_results)
